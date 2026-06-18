@@ -1,0 +1,6 @@
+node_modules/
+package-lock.json
+.env
+auth_info_baileys/
+auth_info_baileyss/
+.DS_Store
