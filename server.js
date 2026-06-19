@@ -78,24 +78,44 @@ async function loadUserConfig(userId) {
                 user_id: userId,
                 gemini_api_key: '',
                 gemini_model: 'gemini-2.5-flash',
-                ai_contacts: []
+                ai_contacts: [],
+                business_enabled: false,
+                business_prompt: '',
+                business_style: '',
+                business_exclude_contacts: []
             };
             await supabaseAdmin.from('user_configs').insert(defaultConfig);
             return {
                 geminiApiKey: '',
                 geminiModel: 'gemini-2.5-flash',
-                aiContacts: []
+                aiContacts: [],
+                businessEnabled: false,
+                businessPrompt: '',
+                businessStyle: '',
+                businessExcludeContacts: []
             };
         }
         
         return {
             geminiApiKey: data.gemini_api_key || '',
             geminiModel: data.gemini_model || 'gemini-2.5-flash',
-            aiContacts: data.ai_contacts || []
+            aiContacts: data.ai_contacts || [],
+            businessEnabled: data.business_enabled ?? false,
+            businessPrompt: data.business_prompt || '',
+            businessStyle: data.business_style || '',
+            businessExcludeContacts: data.business_exclude_contacts || []
         };
     } catch (err) {
         console.error('Error loading config for user', userId, err);
-        return { geminiApiKey: '', geminiModel: 'gemini-2.5-flash', aiContacts: [] };
+        return { 
+            geminiApiKey: '', 
+            geminiModel: 'gemini-2.5-flash', 
+            aiContacts: [],
+            businessEnabled: false,
+            businessPrompt: '',
+            businessStyle: '',
+            businessExcludeContacts: []
+        };
     }
 }
 
@@ -631,7 +651,34 @@ async function connectToWhatsApp(userId) {
                         return false;
                     });
 
+                    let targetConfig = null;
                     if (aiContact) {
+                        targetConfig = {
+                            talkingStyle: aiContact.talkingStyle,
+                            senderContext: aiContact.senderContext,
+                            contactContext: aiContact.contactContext,
+                            type: 'individual'
+                        };
+                    } else if (freshConfig.businessEnabled && !isGroup) {
+                        const senderJid = msg.key.remoteJid || '';
+                        const cleanSender = senderJid.replace(/\D/g, '');
+                        
+                        const isExcluded = freshConfig.businessExcludeContacts.some(exc => {
+                            const cleanExc = exc.trim().replace(/\D/g, '');
+                            return cleanExc && cleanSender.endsWith(cleanExc);
+                        });
+
+                        if (!isExcluded) {
+                            targetConfig = {
+                                talkingStyle: freshConfig.businessStyle,
+                                senderContext: freshConfig.businessPrompt,
+                                contactContext: '',
+                                type: 'business'
+                            };
+                        }
+                    }
+
+                    if (targetConfig) {
                         if (!freshConfig.geminiApiKey) {
                             addSessionLog(userId, `[AI Warning] Message received from ${displayName}, but Gemini API Key is not configured.`);
                         } else {
@@ -660,7 +707,7 @@ async function connectToWhatsApp(userId) {
                                     addSessionLog(userId, `[Direct Match] Direct response triggered for "${messageContent}"`);
                                     replyText = directMatch;
                                 } else {
-                                    addSessionLog(userId, `[AI Trigger] Querying Gemini for ${displayName}...`);
+                                    addSessionLog(userId, `[AI Trigger] Querying Gemini (${targetConfig.type} mode) for ${displayName}...`);
                                     // Build knowledge context string
                                     let knowledgeContext = '';
                                     if (knowledgeRows.length > 0) {
@@ -673,9 +720,9 @@ async function connectToWhatsApp(userId) {
                                         freshConfig.geminiApiKey,
                                         freshConfig.geminiModel,
                                         messageContent,
-                                        aiContact.talkingStyle,
-                                        aiContact.senderContext,
-                                        aiContact.contactContext,
+                                        targetConfig.talkingStyle,
+                                        targetConfig.senderContext,
+                                        targetConfig.contactContext,
                                         historyPrompt,
                                         knowledgeContext
                                     );
@@ -693,7 +740,7 @@ async function connectToWhatsApp(userId) {
                                 await sock.sendMessage(msg.key.remoteJid, { text: replyText });
                                 
                                 const botJid = sock.user?.id ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : 'bot@s.whatsapp.net';
-                                await saveChatLog(userId, msg.key.remoteJid, botJid, directMatch ? 'Direct Match' : 'Gemini AI', replyText, true);
+                                await saveChatLog(userId, msg.key.remoteJid, botJid, directMatch ? 'Direct Match' : `Gemini AI (${targetConfig.type})`, replyText, true);
                                 addSessionLog(userId, `[Bot Replied] Sent auto-reply to ${displayName}`);
 
                                 try {
