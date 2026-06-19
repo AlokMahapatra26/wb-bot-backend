@@ -239,8 +239,34 @@ async function requireAuthAPI(req, res, next) {
     }
 }
 
+// Helper for direct lookup in public.bot_knowledge (exact or single-word matches)
+function findDirectMatch(messageText, rows) {
+    if (!rows || rows.length === 0) return null;
+    const cleanMsg = messageText.toLowerCase().trim();
+    
+    // 1. First look for exact match
+    for (const row of rows) {
+        const cleanTrigger = row.trigger_pattern.toLowerCase().trim();
+        if (cleanMsg === cleanTrigger) {
+            return row.response_text;
+        }
+    }
+    
+    // 2. Look for word-based match (if trigger is a single word in the message)
+    const words = cleanMsg.split(/\s+/);
+    for (const row of rows) {
+        const cleanTrigger = row.trigger_pattern.toLowerCase().trim();
+        if (!cleanTrigger.includes(' ')) {
+            if (words.includes(cleanTrigger)) {
+                return row.response_text;
+            }
+        }
+    }
+    return null;
+}
+
 // Gemini API Query Helper
-async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderContext, contactContext, chatHistoryContext) {
+async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderContext, contactContext, chatHistoryContext, knowledgeContext) {
     const model = modelName || 'gemini-2.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
@@ -260,6 +286,10 @@ async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderC
 
     if (talkingStyle && talkingStyle.trim()) {
         instructions.push(`\nREQUIRED TALKING STYLE / TONE:\n${talkingStyle.trim()}`);
+    }
+
+    if (knowledgeContext && knowledgeContext.trim()) {
+        instructions.push(`\nBUSINESS KNOWLEDGE BASE (Use these facts first to answer customer queries. Do not make up facts contrary to these details):\n${knowledgeContext.trim()}`);
     }
 
     const systemPrompt = instructions.join('\n');
@@ -605,18 +635,51 @@ async function connectToWhatsApp(userId) {
                         if (!freshConfig.geminiApiKey) {
                             addSessionLog(userId, `[AI Warning] Message received from ${displayName}, but Gemini API Key is not configured.`);
                         } else {
-                            addSessionLog(userId, `[AI Trigger] Querying Gemini for ${displayName}...`);
                             try {
                                 const historyPrompt = await getChatHistoryPrompt(userId, msg.key.remoteJid, 10);
-                                const replyText = await queryGemini(
-                                    freshConfig.geminiApiKey,
-                                    freshConfig.geminiModel,
-                                    messageContent,
-                                    aiContact.talkingStyle,
-                                    aiContact.senderContext,
-                                    aiContact.contactContext,
-                                    historyPrompt
-                                );
+                                
+                                // Fetch knowledge base from Supabase
+                                let knowledgeRows = [];
+                                try {
+                                    const { data, error } = await supabaseAdmin
+                                        .from('bot_knowledge')
+                                        .select('trigger_pattern, response_text')
+                                        .eq('user_id', userId);
+                                    if (!error && data) {
+                                        knowledgeRows = data;
+                                    }
+                                } catch (err) {
+                                    console.error('Failed to load bot knowledge:', err);
+                                }
+
+                                // Check for a direct lookup match
+                                const directMatch = findDirectMatch(messageContent, knowledgeRows);
+                                let replyText = '';
+
+                                if (directMatch) {
+                                    addSessionLog(userId, `[Direct Match] Direct response triggered for "${messageContent}"`);
+                                    replyText = directMatch;
+                                } else {
+                                    addSessionLog(userId, `[AI Trigger] Querying Gemini for ${displayName}...`);
+                                    // Build knowledge context string
+                                    let knowledgeContext = '';
+                                    if (knowledgeRows.length > 0) {
+                                        knowledgeContext = knowledgeRows.map(row => 
+                                            `Question/Topic: "${row.trigger_pattern}"\nAnswer: "${row.response_text}"`
+                                        ).join('\n\n');
+                                    }
+
+                                    replyText = await queryGemini(
+                                        freshConfig.geminiApiKey,
+                                        freshConfig.geminiModel,
+                                        messageContent,
+                                        aiContact.talkingStyle,
+                                        aiContact.senderContext,
+                                        aiContact.contactContext,
+                                        historyPrompt,
+                                        knowledgeContext
+                                    );
+                                }
 
                                 // Simulate composing presence with dynamic natural typing delays
                                 try {
@@ -630,14 +693,14 @@ async function connectToWhatsApp(userId) {
                                 await sock.sendMessage(msg.key.remoteJid, { text: replyText });
                                 
                                 const botJid = sock.user?.id ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : 'bot@s.whatsapp.net';
-                                await saveChatLog(userId, msg.key.remoteJid, botJid, 'Gemini AI', replyText, true);
-                                addSessionLog(userId, `[AI Replied] Sent auto-reply to ${displayName}`);
+                                await saveChatLog(userId, msg.key.remoteJid, botJid, directMatch ? 'Direct Match' : 'Gemini AI', replyText, true);
+                                addSessionLog(userId, `[Bot Replied] Sent auto-reply to ${displayName}`);
 
                                 try {
                                     await sock.sendPresenceUpdate('paused', msg.key.remoteJid);
                                 } catch (e) {}
                             } catch (gemErr) {
-                                addSessionLog(userId, `[AI Error] Gemini generation failed: ${gemErr.message}`);
+                                addSessionLog(userId, `[AI Error] Auto-reply flow failed: ${gemErr.message}`);
                                 try {
                                     await sock.sendPresenceUpdate('paused', msg.key.remoteJid);
                                 } catch (e) {}
