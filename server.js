@@ -588,6 +588,11 @@ async function connectToWhatsApp(userId) {
 
         sock.ev.on('messages.upsert', async (m) => {
             const msg = m.messages[0];
+            try {
+                fs.writeFileSync(path.join(__dirname, 'raw_message_debug.json'), JSON.stringify({ msg, m }, null, 2));
+            } catch (err) {
+                console.error('Failed to write raw_message_debug.json:', err);
+            }
             
             if (!msg.key.fromMe && m.type === 'notify' && msg.message) {
                 const messageContent = getMessageSummary(msg.message);
@@ -636,7 +641,7 @@ async function connectToWhatsApp(userId) {
                     const isIndividualDisabled = freshConfig.aiContacts.some(c => c.number === '__SYSTEM_INDIVIDUAL_RESPONDER_DISABLED__');
 
                     // Match contact auto-reply configurations
-                    const aiContact = isIndividualDisabled ? null : freshConfig.aiContacts.find(c => {
+                    const matchedContact = isIndividualDisabled ? null : freshConfig.aiContacts.find(c => {
                         const configJid = c.number.trim().toLowerCase();
                         const remoteJid = (msg.key.remoteJid || '').toLowerCase();
                         const participantJid = (msg.key.participant || '').toLowerCase();
@@ -654,6 +659,9 @@ async function connectToWhatsApp(userId) {
                         return false;
                     });
 
+                    const aiContact = (matchedContact && !matchedContact.disabled) ? matchedContact : null;
+                    const isExplicitlyDisabled = !!(matchedContact && matchedContact.disabled);
+
                     let targetConfig = null;
                     if (aiContact) {
                         targetConfig = {
@@ -663,7 +671,7 @@ async function connectToWhatsApp(userId) {
                             type: 'individual',
                             allowBusinessKnowledge: !!aiContact.allowBusinessKnowledge
                         };
-                    } else if (freshConfig.businessEnabled && !isGroup) {
+                    } else if (freshConfig.businessEnabled && !isGroup && !isExplicitlyDisabled) {
                         const senderJid = msg.key.remoteJid || '';
                         const cleanSender = senderJid.replace(/\D/g, '');
                         
