@@ -632,8 +632,11 @@ async function connectToWhatsApp(userId) {
                     // Dynamically fetch config from Supabase to guarantee fresh API key, model and target list configurations
                     const freshConfig = await loadUserConfig(userId);
 
+                    // Check if individual responder is globally disabled
+                    const isIndividualDisabled = freshConfig.aiContacts.some(c => c.number === '__SYSTEM_INDIVIDUAL_RESPONDER_DISABLED__');
+
                     // Match contact auto-reply configurations
-                    const aiContact = freshConfig.aiContacts.find(c => {
+                    const aiContact = isIndividualDisabled ? null : freshConfig.aiContacts.find(c => {
                         const configJid = c.number.trim().toLowerCase();
                         const remoteJid = (msg.key.remoteJid || '').toLowerCase();
                         const participantJid = (msg.key.participant || '').toLowerCase();
