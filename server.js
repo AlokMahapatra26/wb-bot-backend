@@ -660,7 +660,8 @@ async function connectToWhatsApp(userId) {
                             talkingStyle: aiContact.talkingStyle,
                             senderContext: aiContact.senderContext,
                             contactContext: aiContact.contactContext,
-                            type: 'individual'
+                            type: 'individual',
+                            allowBusinessKnowledge: !!aiContact.allowBusinessKnowledge
                         };
                     } else if (freshConfig.businessEnabled && !isGroup) {
                         const senderJid = msg.key.remoteJid || '';
@@ -688,9 +689,10 @@ async function connectToWhatsApp(userId) {
                             try {
                                 const historyPrompt = await getChatHistoryPrompt(userId, msg.key.remoteJid, 10);
                                 
-                                // Fetch knowledge base from Supabase (only for business autopilot mode)
+                                // Fetch knowledge base from Supabase (if business autopilot or contact allows it)
                                 let knowledgeRows = [];
-                                if (targetConfig.type === 'business') {
+                                const needsKnowledge = targetConfig.type === 'business' || !!targetConfig.allowBusinessKnowledge;
+                                if (needsKnowledge) {
                                     try {
                                         const { data, error } = await supabaseAdmin
                                             .from('bot_knowledge')
@@ -704,8 +706,8 @@ async function connectToWhatsApp(userId) {
                                     }
                                 }
 
-                                // Check for a direct lookup match (only in business mode)
-                                const directMatch = targetConfig.type === 'business' ? findDirectMatch(messageContent, knowledgeRows) : null;
+                                // Check for a direct lookup match (if business autopilot or contact allows it)
+                                const directMatch = needsKnowledge ? findDirectMatch(messageContent, knowledgeRows) : null;
                                 let replyText = '';
 
                                 if (directMatch) {
@@ -715,7 +717,7 @@ async function connectToWhatsApp(userId) {
                                     addSessionLog(userId, `[AI Trigger] Querying Gemini (${targetConfig.type} mode) for ${displayName}...`);
                                     // Build knowledge context string
                                     let knowledgeContext = '';
-                                    if (targetConfig.type === 'business' && knowledgeRows.length > 0) {
+                                    if (needsKnowledge && knowledgeRows.length > 0) {
                                         knowledgeContext = knowledgeRows.map(row => 
                                             `Question/Topic: "${row.trigger_pattern}"\nAnswer: "${row.response_text}"`
                                         ).join('\n\n');
