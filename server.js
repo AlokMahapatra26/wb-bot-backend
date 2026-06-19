@@ -688,22 +688,24 @@ async function connectToWhatsApp(userId) {
                             try {
                                 const historyPrompt = await getChatHistoryPrompt(userId, msg.key.remoteJid, 10);
                                 
-                                // Fetch knowledge base from Supabase
+                                // Fetch knowledge base from Supabase (only for business autopilot mode)
                                 let knowledgeRows = [];
-                                try {
-                                    const { data, error } = await supabaseAdmin
-                                        .from('bot_knowledge')
-                                        .select('trigger_pattern, response_text')
-                                        .eq('user_id', userId);
-                                    if (!error && data) {
-                                        knowledgeRows = data;
+                                if (targetConfig.type === 'business') {
+                                    try {
+                                        const { data, error } = await supabaseAdmin
+                                            .from('bot_knowledge')
+                                            .select('trigger_pattern, response_text')
+                                            .eq('user_id', userId);
+                                        if (!error && data) {
+                                            knowledgeRows = data;
+                                        }
+                                    } catch (err) {
+                                        console.error('Failed to load bot knowledge:', err);
                                     }
-                                } catch (err) {
-                                    console.error('Failed to load bot knowledge:', err);
                                 }
 
-                                // Check for a direct lookup match
-                                const directMatch = findDirectMatch(messageContent, knowledgeRows);
+                                // Check for a direct lookup match (only in business mode)
+                                const directMatch = targetConfig.type === 'business' ? findDirectMatch(messageContent, knowledgeRows) : null;
                                 let replyText = '';
 
                                 if (directMatch) {
@@ -713,7 +715,7 @@ async function connectToWhatsApp(userId) {
                                     addSessionLog(userId, `[AI Trigger] Querying Gemini (${targetConfig.type} mode) for ${displayName}...`);
                                     // Build knowledge context string
                                     let knowledgeContext = '';
-                                    if (knowledgeRows.length > 0) {
+                                    if (targetConfig.type === 'business' && knowledgeRows.length > 0) {
                                         knowledgeContext = knowledgeRows.map(row => 
                                             `Question/Topic: "${row.trigger_pattern}"\nAnswer: "${row.response_text}"`
                                         ).join('\n\n');
