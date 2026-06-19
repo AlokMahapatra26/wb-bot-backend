@@ -949,6 +949,20 @@ app.delete('/api/chats/:jid', requireAuthAPI, async (req, res) => {
     }
 });
 
+// Clear daemon connection logs
+app.post('/api/logs/clear', requireAuthAPI, (req, res) => {
+    try {
+        const userId = req.user.id;
+        const session = getOrCreateSession(userId);
+        session.logs = [];
+        broadcastToUser(userId, { logs: [], status: session.status, qrCode: session.qrCode });
+        return res.json({ success: true });
+    } catch (err) {
+        console.error('Failed to clear session logs:', err);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Start server
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
