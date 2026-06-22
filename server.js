@@ -62,6 +62,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// Root health-check / verification endpoint
+app.get('/', (req, res) => {
+    res.json({
+        success: true,
+        status: "active",
+        message: "WhatsApp Bot Daemon is running perfectly!",
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Configuration Persistence Helpers (Supabase db-backed)
 async function loadUserConfig(userId) {
     try {
