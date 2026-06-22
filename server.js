@@ -259,31 +259,6 @@ async function requireAuthAPI(req, res, next) {
     }
 }
 
-// Helper for direct lookup in public.bot_knowledge (exact or single-word matches)
-function findDirectMatch(messageText, rows) {
-    if (!rows || rows.length === 0) return null;
-    const cleanMsg = messageText.toLowerCase().trim();
-    
-    // 1. First look for exact match
-    for (const row of rows) {
-        const cleanTrigger = row.trigger_pattern.toLowerCase().trim();
-        if (cleanMsg === cleanTrigger) {
-            return row.response_text;
-        }
-    }
-    
-    // 2. Look for word-based match (if trigger is a single word in the message)
-    const words = cleanMsg.split(/\s+/);
-    for (const row of rows) {
-        const cleanTrigger = row.trigger_pattern.toLowerCase().trim();
-        if (!cleanTrigger.includes(' ')) {
-            if (words.includes(cleanTrigger)) {
-                return row.response_text;
-            }
-        }
-    }
-    return null;
-}
 
 // Gemini API Query Helper
 async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderContext, contactContext, chatHistoryContext, knowledgeContext) {
@@ -309,7 +284,7 @@ async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderC
     }
 
     if (knowledgeContext && knowledgeContext.trim()) {
-        instructions.push(`\nBUSINESS KNOWLEDGE BASE (Use these facts first to answer customer queries. Do not make up facts contrary to these details):\n${knowledgeContext.trim()}`);
+        instructions.push(`\nBUSINESS KNOWLEDGE (Reference this information to answer queries. Use it naturally. Do not make up facts contrary to these details):\n${knowledgeContext.trim()}`);
     }
 
     const systemPrompt = instructions.join('\n');
@@ -324,7 +299,7 @@ async function queryGemini(apiKey, modelName, messageText, talkingStyle, senderC
             parts: [{ text: promptText }]
         }],
         generationConfig: {
-            maxOutputTokens: 60,
+            maxOutputTokens: 350,
             temperature: 0.8
         }
     };
@@ -356,34 +331,14 @@ function cleanModelResponse(text) {
         text = text.substring(replyMarker + 'YOUR REPLY:'.length).trim();
     }
 
+    // Remove markdown bold
     text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
 
-    const lines = text.split('\n').map(line => {
-        let t = line.trim();
-        t = t.replace(/^[\*\-•]\s+/, '');
-        t = t.replace(/^\d+[\.\)]\s+/, '');
-        return t;
-    }).filter(t => t.length > 0);
-
-    const isMetaLine = (line) => {
-        const l = line.toLowerCase();
-        if (/^(role|personality|style|tone|constraint|input|output|option|context|message|thinking|reasoning|analysis|note|sender|recipient|required|the input|the output|the message|the required|the user|the persona|common|typical|appropriate|emoji|wave|smile|since|let'?s go|keeping it|a simple|does it)[\s:\.]/i.test(line)) return true;
-        if (l.includes('no thinking process') || l.includes('no explanation') || l.includes('purely emoji') || l.includes('no markdown') || l.includes('no robotic') || l.includes('no bullet') || l.includes('no text') || l.includes('constraint') || l.includes('implies') || l.includes('represents') || l.includes('response for') || l.includes('output format') || l.includes('most natural') || l.includes('follow') || l.includes('does it') || l.includes('only output') || l.includes('final text')) return true;
-        if (/^[A-Z][a-z]+ (emoji|response|option|message|text):/i.test(line)) return true;
-        if (/^\(.+\)$/.test(line)) return true;
-        if (/"[^"]{1,30}"/.test(line) && l.includes('for')) return true;
-        if (/\?\s*(yes|no|correct|true)\.?$/i.test(line)) return true;
-        return false;
-    };
-
-    const cleaned = lines.filter(line => !isMetaLine(line));
-
-    if (cleaned.length > 0) {
-        return cleaned[cleaned.length - 1].trim();
+    // Remove any leading/trailing quotes if the whole response is wrapped
+    if (text.startsWith('"') && text.endsWith('"')) {
+        text = text.slice(1, -1).trim();
     }
-    if (lines.length > 0) {
-        return lines[lines.length - 1].trim();
-    }
+
     return text.trim();
 }
 
@@ -714,34 +669,32 @@ async function connectToWhatsApp(userId) {
                                     }
                                 }
 
-                                // Check for a direct lookup match (if business autopilot or contact allows it)
-                                const directMatch = needsKnowledge ? findDirectMatch(messageContent, knowledgeRows) : null;
                                 let replyText = '';
 
-                                if (directMatch) {
-                                    addSessionLog(userId, `[Direct Match] Direct response triggered for "${messageContent}"`);
-                                    replyText = directMatch;
-                                } else {
-                                    addSessionLog(userId, `[AI Trigger] Querying Gemini (${targetConfig.type} mode) for ${displayName}...`);
-                                    // Build knowledge context string
-                                    let knowledgeContext = '';
-                                    if (needsKnowledge && knowledgeRows.length > 0) {
-                                        knowledgeContext = knowledgeRows.map(row => 
-                                            `Question/Topic: "${row.trigger_pattern}"\nAnswer: "${row.response_text}"`
-                                        ).join('\n\n');
-                                    }
-
-                                    replyText = await queryGemini(
-                                        freshConfig.geminiApiKey,
-                                        freshConfig.geminiModel,
-                                        messageContent,
-                                        targetConfig.talkingStyle,
-                                        targetConfig.senderContext,
-                                        targetConfig.contactContext,
-                                        historyPrompt,
-                                        knowledgeContext
-                                    );
+                                addSessionLog(userId, `[AI Trigger] Querying Gemini (${targetConfig.type} mode) for ${displayName}...`);
+                                // Build knowledge context — dump all rows as plain text
+                                let knowledgeContext = '';
+                                if (needsKnowledge && knowledgeRows.length > 0) {
+                                    knowledgeContext = knowledgeRows.map(row => {
+                                        // If trigger and response are the same (freeform entry), just use one
+                                        if (row.trigger_pattern === row.response_text) {
+                                            return row.trigger_pattern;
+                                        }
+                                        return `${row.trigger_pattern} — ${row.response_text}`;
+                                    }).join('\n');
                                 }
+                                addSessionLog(userId, `[Knowledge] ${knowledgeRows.length} rows loaded. Context length: ${knowledgeContext.length} chars`);
+
+                                replyText = await queryGemini(
+                                    freshConfig.geminiApiKey,
+                                    freshConfig.geminiModel,
+                                    messageContent,
+                                    targetConfig.talkingStyle,
+                                    targetConfig.senderContext,
+                                    targetConfig.contactContext,
+                                    historyPrompt,
+                                    knowledgeContext
+                                );
 
                                 // Simulate composing presence with dynamic natural typing delays
                                 try {
@@ -755,7 +708,7 @@ async function connectToWhatsApp(userId) {
                                 await sock.sendMessage(msg.key.remoteJid, { text: replyText });
                                 
                                 const botJid = sock.user?.id ? (sock.user.id.split(':')[0] + '@s.whatsapp.net') : 'bot@s.whatsapp.net';
-                                await saveChatLog(userId, msg.key.remoteJid, botJid, directMatch ? 'Direct Match' : `Gemini AI (${targetConfig.type})`, replyText, true);
+                                await saveChatLog(userId, msg.key.remoteJid, botJid, `Gemini AI (${targetConfig.type})`, replyText, true);
                                 addSessionLog(userId, `[Bot Replied] Sent auto-reply to ${displayName}`);
 
                                 try {
@@ -809,6 +762,9 @@ async function autoStartAllBots() {
 }
 
 // ── ENDPOINTS ──
+
+// Multer config for PDF uploads (in-memory, max 10MB)
+
 
 // Real-Time Events SSE Connection
 app.get('/api/events', requireAuthAPI, async (req, res) => {
