@@ -1,33 +1,33 @@
 {
   "msg": {
     "key": {
-      "remoteJid": "274779709939891@lid",
+      "remoteJid": "200433658294422@lid",
       "fromMe": true,
-      "id": "3EB0BD38B31FBE4E2F78B5"
+      "id": "3EB0AD862CF9A3F7C4F3F4"
     },
     "message": {
       "extendedTextMessage": {
-        "text": "Haan papa, bolo na. Sab theek?"
+        "text": "Narendra Modi."
       }
     },
-    "messageTimestamp": "1782513271",
-    "status": "READ"
+    "messageTimestamp": "1782555637",
+    "status": "SERVER_ACK"
   },
   "m": {
     "messages": [
       {
         "key": {
-          "remoteJid": "274779709939891@lid",
+          "remoteJid": "200433658294422@lid",
           "fromMe": true,
-          "id": "3EB0BD38B31FBE4E2F78B5"
+          "id": "3EB0AD862CF9A3F7C4F3F4"
         },
         "message": {
           "extendedTextMessage": {
-            "text": "Haan papa, bolo na. Sab theek?"
+            "text": "Narendra Modi."
           }
         },
-        "messageTimestamp": "1782513271",
-        "status": "READ"
+        "messageTimestamp": "1782555637",
+        "status": "SERVER_ACK"
       }
     ],
     "type": "append"

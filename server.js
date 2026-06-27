@@ -98,6 +98,7 @@ async function loadUserConfig(userId) {
             return {
                 geminiApiKey: '',
                 geminiModel: 'gemini-2.5-flash',
+                chatHistoryLimit: 10,
                 aiContacts: [],
                 businessEnabled: false,
                 businessPrompt: '',
@@ -109,6 +110,7 @@ async function loadUserConfig(userId) {
         return {
             geminiApiKey: data.gemini_api_key || '',
             geminiModel: data.gemini_model || 'gemini-2.5-flash',
+            chatHistoryLimit: data.chat_history_limit ?? 10,
             aiContacts: data.ai_contacts || [],
             businessEnabled: data.business_enabled ?? false,
             businessPrompt: data.business_prompt || '',
@@ -120,6 +122,7 @@ async function loadUserConfig(userId) {
         return { 
             geminiApiKey: '', 
             geminiModel: 'gemini-2.5-flash', 
+            chatHistoryLimit: 10,
             aiContacts: [],
             businessEnabled: false,
             businessPrompt: '',
@@ -689,7 +692,8 @@ async function connectToWhatsApp(userId) {
                             addSessionLog(userId, `[AI Warning] Message received from ${displayName}, but Gemini API Key is not configured.`);
                         } else {
                             try {
-                                const historyPrompt = await getChatHistoryPrompt(userId, msg.key.remoteJid, 10);
+                                const historyLimit = freshConfig.chatHistoryLimit ?? 10;
+                                const historyPrompt = await getChatHistoryPrompt(userId, msg.key.remoteJid, historyLimit);
                                 
                                 // Fetch knowledge base from Supabase (if business autopilot or contact allows it)
                                 let knowledgeRows = [];
