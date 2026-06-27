@@ -1,67 +1,35 @@
 {
   "msg": {
     "key": {
-      "remoteJid": "200433658294422@lid",
-      "fromMe": false,
-      "id": "3EB020E915CEC867640ED5",
-      "senderPn": "918849561649@s.whatsapp.net"
+      "remoteJid": "274779709939891@lid",
+      "fromMe": true,
+      "id": "3EB0BD38B31FBE4E2F78B5"
     },
-    "messageTimestamp": 1782096627,
-    "pushName": "Alok",
-    "broadcast": false,
     "message": {
-      "conversation": "hi",
-      "messageContextInfo": {
-        "deviceListMetadata": {
-          "senderKeyHash": "5hbcVCTyx+6qmg==",
-          "senderTimestamp": "1782096517",
-          "senderAccountType": "E2EE",
-          "receiverAccountType": "E2EE",
-          "recipientKeyHash": "oFVjUCCQQjaEtA==",
-          "recipientTimestamp": "1782096468"
-        },
-        "deviceListMetadataVersion": 2,
-        "messageSecret": "PKCD7yriz7Ao+ucu4ZWW9ATGKNI8kZ+EpZavG/+SJ4k=",
-        "limitSharingV2": {
-          "trigger": "UNKNOWN",
-          "initiatedByMe": false
-        }
+      "extendedTextMessage": {
+        "text": "Haan papa, bolo na. Sab theek?"
       }
-    }
+    },
+    "messageTimestamp": "1782513271",
+    "status": "READ"
   },
   "m": {
     "messages": [
       {
         "key": {
-          "remoteJid": "200433658294422@lid",
-          "fromMe": false,
-          "id": "3EB020E915CEC867640ED5",
-          "senderPn": "918849561649@s.whatsapp.net"
+          "remoteJid": "274779709939891@lid",
+          "fromMe": true,
+          "id": "3EB0BD38B31FBE4E2F78B5"
         },
-        "messageTimestamp": 1782096627,
-        "pushName": "Alok",
-        "broadcast": false,
         "message": {
-          "conversation": "hi",
-          "messageContextInfo": {
-            "deviceListMetadata": {
-              "senderKeyHash": "5hbcVCTyx+6qmg==",
-              "senderTimestamp": "1782096517",
-              "senderAccountType": "E2EE",
-              "receiverAccountType": "E2EE",
-              "recipientKeyHash": "oFVjUCCQQjaEtA==",
-              "recipientTimestamp": "1782096468"
-            },
-            "deviceListMetadataVersion": 2,
-            "messageSecret": "PKCD7yriz7Ao+ucu4ZWW9ATGKNI8kZ+EpZavG/+SJ4k=",
-            "limitSharingV2": {
-              "trigger": "UNKNOWN",
-              "initiatedByMe": false
-            }
+          "extendedTextMessage": {
+            "text": "Haan papa, bolo na. Sab theek?"
           }
-        }
+        },
+        "messageTimestamp": "1782513271",
+        "status": "READ"
       }
     ],
-    "type": "notify"
+    "type": "append"
   }
 }

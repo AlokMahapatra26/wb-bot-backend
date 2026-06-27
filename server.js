@@ -526,26 +526,55 @@ async function connectToWhatsApp(userId) {
                 
                 const isConflict = errMessage.toLowerCase().includes('conflict') || statusCode === DisconnectReason.connectionReplaced;
                 const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+                const isConnectionFailure = errMessage.toLowerCase().includes('connection failure') || statusCode === DisconnectReason.connectionLost;
                 const shouldReconnect = !isLoggedOut && !isConflict;
                 
-                addSessionLog(userId, `Connection closed due to: ${errMessage || lastDisconnect?.error || 'Unknown Error'}. Reconnecting in 5s: ${shouldReconnect}`);
+                addSessionLog(userId, `Connection closed due to: ${errMessage || lastDisconnect?.error || 'Unknown Error'}. Reconnecting: ${shouldReconnect}`);
                 
                 session.sock = null;
-                session.status = isConflict ? 'conflict' : 'disconnected';
                 session.qrCode = '';
-                broadcastToUser(userId, { status: session.status, qrCode: '' });
                 
-                if (shouldReconnect) {
-                    session.reconnectTimeout = setTimeout(() => {
-                        session.reconnectTimeout = null;
-                        connectToWhatsApp(userId);
-                    }, 5000);
-                } else if (isConflict) {
+                if (isConflict) {
+                    session.status = 'conflict';
+                    broadcastToUser(userId, { status: 'conflict', qrCode: '' });
                     addSessionLog(userId, 'Auto-reconnect disabled because the number is connected to another device.');
+                } else if (isLoggedOut) {
+                    // Session expired or user logged out from phone — clear credentials and generate fresh QR
+                    session.status = 'disconnected';
+                    broadcastToUser(userId, { status: 'disconnected', qrCode: '' });
+                    addSessionLog(userId, 'Session logged out. Clearing credentials and generating fresh QR...');
+                    try {
+                        await supabaseAdmin.from('whatsapp_sessions').delete().eq('user_id', userId);
+                    } catch (err) {
+                        addSessionLog(userId, `Failed to clear session from DB: ${err.message}`);
+                    }
+                    setTimeout(() => connectToWhatsApp(userId), 3000);
+                } else if (shouldReconnect) {
+                    session.status = 'disconnected';
+                    broadcastToUser(userId, { status: 'disconnected', qrCode: '' });
+                    // Try reconnecting, but if it fails 3 times, clear session and get new QR
+                    session.reconnectAttempts = (session.reconnectAttempts || 0) + 1;
+                    if (session.reconnectAttempts >= 3) {
+                        addSessionLog(userId, 'Reconnect failed 3 times. Clearing session and generating new QR...');
+                        session.reconnectAttempts = 0;
+                        try {
+                            await supabaseAdmin.from('whatsapp_sessions').delete().eq('user_id', userId);
+                        } catch (err) {
+                            addSessionLog(userId, `Failed to clear session from DB: ${err.message}`);
+                        }
+                        setTimeout(() => connectToWhatsApp(userId), 3000);
+                    } else {
+                        addSessionLog(userId, `Reconnect attempt ${session.reconnectAttempts}/3 in 5s...`);
+                        session.reconnectTimeout = setTimeout(() => {
+                            session.reconnectTimeout = null;
+                            connectToWhatsApp(userId);
+                        }, 5000);
+                    }
                 }
             } else if (connection === 'open') {
                 session.status = 'connected';
                 session.qrCode = '';
+                session.reconnectAttempts = 0;
                 broadcastToUser(userId, { status: 'connected', qrCode: '' });
                 addSessionLog(userId, 'WhatsApp connection is open and active!');
             }
